@@ -54,7 +54,6 @@ def doesItExist(start, path, object_type):
         keys = list(json_data.keys())
         inode = ""
         for key in keys:
-
             results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
             temp = json.loads(results.text)
             name = temp['name']
@@ -131,20 +130,49 @@ def main():
                 for path in options:
                     if path != "/":
                         check, child = doesItExist(start, path, "directory")
-                        print("ls check", start, path, check, child)
+                        #print("ls check", start, path, check, child)
                         if check:
-                            parent = start
-                            start = child
-                            success = True
+                           parent = start
+                           start = child
+                           success = True
                         else:
-                            success = False
-                            break  # quit processing because path is invalid
-                    else:
-                        print("The path " + option + " does not exist.")
+                           success = False
+                           break  # quit processing because path is invalid
                 if success:
                     #get contents of folder
                     results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
-                    print(results.text)
+                    #print(results.text)
+                    if results.text != "{\"" + str(start) + "\"" + ":\"parent\"}":
+                        json_data = json.loads(results.text)
+                        keys = list(json_data.keys())
+                        inode = ""
+                        for key in keys:
+                            if key != start:
+                                results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
+                                temp = json.loads(results.text)
+                                name = temp['name']
+                                nodeType = temp['type']
+                                print(name)
+
+                else:
+                    print("The path " + option + " does not exist.")
+            elif option[0] == "/" and len(option) == 1:
+                results = requests.get(firebase_url + 'INodeDirectorySection/7000.json')
+                if results.text != "{\"7000\":\"parent\"}":
+                    json_data = json.loads(results.text)
+                    keys = list(json_data.keys())
+                    inode = ""
+                    for key in keys:
+                        if key != "7000":
+                            results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
+                            temp = json.loads(results.text)
+                            name = temp['name']
+                            nodeType = temp['type']
+                            print(name)
+            else:
+                print("Path must include / but cannot be only root directory .")
+                print(system_message)
+
         # -MKDIR
         elif command == "-mkdir":
             if option[0] == "/" and len(option) > 1:
