@@ -48,241 +48,245 @@ def getNextInode():
 def doesItExist(start, path, object_type):
     status = False
     results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
-    #print("results ", results.text)
+    #print("results ", results.text, start)
     if results.text != "{\"" + str(start) + "\"" + ":\"parent\"}":
         json_data = json.loads(results.text)
         keys = list(json_data.keys())
         inode = ""
+        #print(keys)
         for key in keys:
             results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
             temp = json.loads(results.text)
             name = temp['name']
             nodeType = temp['type']
-
-            if path == name and object_type == nodeType:
+            #print("start", start, "key ", key, "type", nodeType)
+            if path == name and object_type == nodeType and key != start:
                 status = True
                 inode = key
-            # print(key, path, name)
+                #print(key, path, name, nodeType)
     if status:
         return True, inode
     else:
         return False, 9
+
+def create(option, options, start, success, x):
+    while x < len(options) - 1:
+        path = options[x]
+        if path != "/":
+            check, child = doesItExist(start, path, "directory")
+            # print("create check", start, path, check, child)
+            if check:
+                parent = start
+                start = child
+                success = True
+            else:
+                success = False
+                break  # quit processing because path is invalid
+        x += 1
+    if success:
+        # check if file exists
+        file = options[x]
+        check, child = doesItExist(start, file, "file")
+        # print(check, file, child)
+        if not check:
+            # get next inode
+            newInode = getNextInode()
+            requests.put(firebase_url + 'INodeSection/' + str(newInode) + '.json', data='{"name": "' + file
+                                                                                        + '","type":"file"}')
+            requests.patch(firebase_url + 'INodeDirectorySection/' + str(start) + '.json', data='{"'
+                                                                                                + str(
+                newInode) + '":"child"}')
+            print("The file " + option + " was created successfully.")
+        else:
+            print("The file " + option + " already exists.")
+    else:
+        print("Error. Invalid path")
+
+def export():
+    test=1
+
+def ls(option, options, start, success, x):
+    if option[0] == "/" and len(option) > 1:
+        options = option.split("/")
+        options[0] = "/"  # set root
+        start = 7000  # always start at root
+        success = False
+        #x=0
+        for path in options:
+            if path != "/":
+                check, child = doesItExist(start, path, "directory")
+                #print(x, start, child, path)
+                #x += 1
+                #print("ls check", start, path, check, child)
+                if check:
+                   parent = start
+                   start = child
+                   success = True
+                else:
+                   success = False
+                   break  # quit processing because path is invalid
+        if success:
+            #get contents of folder
+            results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
+            #print(results.text)
+            if results.text != "{\"" + str(start) + "\"" + ":\"parent\"}":
+                json_data = json.loads(results.text)
+                keys = list(json_data.keys())
+                inode = ""
+                for key in keys:
+                    if key != start:
+                        results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
+                        temp = json.loads(results.text)
+                        name = temp['name']
+                        nodeType = temp['type']
+                        print(name)
+
+        else:
+            print("The path " + option + " does not exist.")
+    elif option[0] == "/" and len(option) == 1:
+        #print("at root")
+        results = requests.get(firebase_url + 'INodeDirectorySection/7000.json')
+        if results.text != "{\"7000\":\"parent\"}":
+            json_data = json.loads(results.text)
+            keys = list(json_data.keys())
+            inode = ""
+            for key in keys:
+                if key != "7000":
+                    results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
+                    temp = json.loads(results.text)
+                    name = temp['name']
+                    nodeType = temp['type']
+                    print(name)
+    else:
+        print("Path must include / but cannot be only root directory .")
+        print(system_message)
+
+
+def mkdir(option, options, start, success, x):
+    for path in options:
+        if path != "/":
+            check, nextStart = doesItExist(start, path, "directory")
+            # print(path, check, nextStart)
+            if check:
+                start = nextStart
+            else:
+                # create the directory inode and add to inode directory
+                newInode = getNextInode()
+                # print(newInode)
+                requests.put(firebase_url + 'INodeSection/' + str(newInode) + '.json', data='{"name": "'
+                                            + path + '","type":"directory"}')
+                requests.patch(firebase_url + 'INodeDirectorySection/.json', data='{"'
+                                            + str(newInode) + '":""}')
+                requests.patch(firebase_url + 'INodeDirectorySection/' + str(newInode) + '.json', data='{"'
+                                            + str(newInode) + '":"parent"}')
+                requests.patch(firebase_url + 'INodeDirectorySection/' + str(start) + '.json', data='{"'
+                                            + str(newInode) + '":"child"}')
+                start = newInode
+                success = True
+    if success:
+        print(option + " was created successfully.")
+    else:
+        print(option + " already exists.")
+
+
+def rm(option, options, start, success, x):
+    while x < len(options) - 1:
+        path = options[x]
+        if path != "/":
+            check, child = doesItExist(start, path, "directory")
+            # print("create check", start, path, check, child)
+            if check:
+                parent = start
+                start = child
+                success = True
+            else:
+                success = False
+                break  # quit processing because path is invalid
+        x += 1
+    if success:
+        # check if file exists
+        file = options[x]
+        check, child = doesItExist(start, file, "file")
+        # print(check, file, child)
+        if check:
+            # print(child, start)
+            requests.delete(firebase_url + 'INodeSection/' + str(child) + '.json')
+            requests.delete(firebase_url + 'INodeDirectorySection/' + str(start) + "/" + str(child)
+                            + '.json')
+            print("The file " + option + " was deleted successfully.")
+        else:
+            print("The file " + option + " does not exist.")
+    else:
+        print("Error. Invalid path")
+
+
+def rmdir(option, options, start, success, x):
+    for path in options:
+        if path != "/":
+            check, child = doesItExist(start, path, "directory")
+            # print("del check", start, path, check, child)
+            if check:
+                parent = start
+                start = child
+                success = True
+            else:
+                success = False
+                break  # quit processing because path is invalid
+    if success:
+        # check if directory is empty
+        results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
+        # print(results.text)
+        if results.text == "{\"" + str(start) + "\"" + ":\"parent\"}":
+            requests.delete(firebase_url + 'INodeDirectorySection/' + str(parent) + "/" + str(start)
+                            + '.json')
+            requests.delete(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
+
+            requests.delete(firebase_url + 'INodeSection/' + str(start) + '.json')
+            print(option + " was deleted successfully.")
+        else:
+            print(option + " is not empty and was not deleted.")
+    else:
+        print("The path " + option + " does not exist.")
 
 
 def main():
     if len(sys.argv) == 3:
         command = sys.argv[1]
         option = sys.argv[2]
+        start = 7000  # always start at root
+        if option[0] == "/" and len(option) > 1:
+            options = option.split("/")
+            options[0] = "/"  # set root
 
-        # -CREATE
-        if command == "-create":
-            if option[0] == "/" and len(option) > 1:
-                options = option.split("/")
-                options[0] = "/"  # set root
-                start = 7000  # always start at root
-                success = True
-                x = 0
-                while x < len(options)-1:
-                    path = options[x]
-                    if path != "/":
-                        check, child = doesItExist(start, path, "directory")
-                        #print("create check", start, path, check, child)
-                        if check:
-                            parent = start
-                            start = child
-                            success = True
-                        else:
-                            success = False
-                            break  # quit processing because path is invalid
-                    x += 1
-                if success:
-                    # check if file exists
-                    file = options[x]
-                    check, child = doesItExist(start, file, "file")
-                    #print(check, file, child)
-                    if not check:
-                        #get next inode
-                        newInode = getNextInode()
-                        requests.put(firebase_url + 'INodeSection/' + str(newInode) + '.json', data='{"name": "' + file
-                                                    + '","type":"file"}')
-                        requests.patch(firebase_url + 'INodeDirectorySection/' + str(start) + '.json', data='{"'
-                                                    + str(newInode) + '":"child"}')
-                        print("The file " + option + " was created successfully.")
-                    else:
-                        print("The file " + option + " already exists.")
-                else:
-                    print("Error. Invalid path")
+            # -CREATE
+            if command == "-create":
+                create(option, options, start, True, 0)
+
+            # -EXPORT
+            elif command == "-export":
+                export(option, options, start, True, 0)
+
+            # -LS
+            elif command == "-ls":
+                ls(option, options, start, False, 0)
+
+            # -MKDIR
+            elif command == "-mkdir":
+                mkdir(option, options, 7000, False, 0 )
+
+            # -RM
+            elif command == "-rm":
+                rm(option, options, 7000, True, 0)
+
+            # -RMDIR
+            elif command == "-rmdir":
+                rmdir(option, options, 7000, False, 0)
+
             else:
-                print("Path must include / but cannot be only root directory .")
                 print(system_message)
 
-        # -EXPORT
-        elif command == "-export":
-            test = 1
-
-        # -LS
-        elif command == "-ls":
-            if option[0] == "/" and len(option) > 1:
-                options = option.split("/")
-                options[0] = "/"  # set root
-                start = 7000  # always start at root
-                success = False
-                for path in options:
-                    if path != "/":
-                        check, child = doesItExist(start, path, "directory")
-                        #print("ls check", start, path, check, child)
-                        if check:
-                           parent = start
-                           start = child
-                           success = True
-                        else:
-                           success = False
-                           break  # quit processing because path is invalid
-                if success:
-                    #get contents of folder
-                    results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
-                    #print(results.text)
-                    if results.text != "{\"" + str(start) + "\"" + ":\"parent\"}":
-                        json_data = json.loads(results.text)
-                        keys = list(json_data.keys())
-                        inode = ""
-                        for key in keys:
-                            if key != start:
-                                results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
-                                temp = json.loads(results.text)
-                                name = temp['name']
-                                nodeType = temp['type']
-                                print(name)
-
-                else:
-                    print("The path " + option + " does not exist.")
-            elif option[0] == "/" and len(option) == 1:
-                results = requests.get(firebase_url + 'INodeDirectorySection/7000.json')
-                if results.text != "{\"7000\":\"parent\"}":
-                    json_data = json.loads(results.text)
-                    keys = list(json_data.keys())
-                    inode = ""
-                    for key in keys:
-                        if key != "7000":
-                            results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
-                            temp = json.loads(results.text)
-                            name = temp['name']
-                            nodeType = temp['type']
-                            print(name)
-            else:
-                print("Path must include / but cannot be only root directory .")
-                print(system_message)
-
-        # -MKDIR
-        elif command == "-mkdir":
-            if option[0] == "/" and len(option) > 1:
-                options = option.split("/")
-                options[0] = "/"  # set root
-                start = 7000  # always start at root
-                success = False
-                for path in options:
-                    if path != "/":
-                        check, nextStart = doesItExist(start, path, "directory")
-                        #print(path, check, nextStart)
-                        if check:
-                            start = nextStart
-                        else:
-                            # create the directory inode and add to inode directory
-                            newInode = getNextInode()
-                            #print(newInode)
-                            requests.put(firebase_url + 'INodeSection/' + str(newInode) + '.json', data='{"name": "'
-                                                        + path + '","type":"directory"}')
-                            requests.patch(firebase_url + 'INodeDirectorySection/.json', data='{"'
-                                                        + str(newInode) + '":""}')
-                            requests.patch(firebase_url + 'INodeDirectorySection/' + str(newInode) + '.json', data='{"'
-                                                        + str(newInode) + '":"parent"}')
-                            requests.patch(firebase_url + 'INodeDirectorySection/' + str(start) + '.json', data='{"'
-                                                        + str(newInode) + '":"child"}')
-                            start = newInode
-                            success = True
-                if success:
-                    print(option + " was created successfully.")
-                else:
-                    print(option + " already exists.")
-            else:
-                print("Path must include / but cannot be only root directory .")
-                print(system_message)
-
-        # -RM
-        elif command == "-rm":
-            if option[0] == "/" and len(option) > 1:
-                options = option.split("/")
-                options[0] = "/"  # set root
-                start = 7000  # always start at root
-                success = True
-                x = 0
-                while x < len(options) - 1:
-                    path = options[x]
-                    if path != "/":
-                        check, child = doesItExist(start, path, "directory")
-                        # print("create check", start, path, check, child)
-                        if check:
-                            parent = start
-                            start = child
-                            success = True
-                        else:
-                            success = False
-                            break  # quit processing because path is invalid
-                    x += 1
-                if success:
-                    # check if file exists
-                    file = options[x]
-                    check, child = doesItExist(start, file, "file")
-                    # print(check, file, child)
-                    if check:
-                        #print(child, start)
-                        requests.delete(firebase_url + 'INodeSection/' + str(child) + '.json')
-                        requests.delete(firebase_url + 'INodeDirectorySection/' + str(start) + "/" + str(child)
-                                        + '.json')
-                        print("The file " + option + " was deleted successfully.")
-                    else:
-                        print("The file " + option + " does not exist.")
-                else:
-                    print("Error. Invalid path")
-            else:
-                print("Path must include / but cannot be only root directory .")
-                print(system_message)
-
-        # -RMDIR
-        elif command == "-rmdir":
-            if option[0] == "/" and len(option) > 1:
-                options = option.split("/")
-                options[0] = "/"  # set root
-                start = 7000  # always start at root
-                success = False
-                for path in options:
-                    if path != "/":
-                        check, child = doesItExist(start, path, "directory")
-                        print("del check", start, path, check, child)
-                        if check:
-                            parent = start
-                            start = child
-                            success = True
-                        else:
-                            success = False
-                            break #quit processing because path is invalid
-                if success:
-                    #check if directory is empty
-                    results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
-                    #print(results.text)
-                    if results.text == "{\"" + str(start) + "\"" + ":\"parent\"}":
-                        requests.delete(firebase_url + 'INodeDirectorySection/' + str(parent) + "/" + str(start)
-                                        + '.json')
-                        requests.delete(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
-
-                        requests.delete(firebase_url + 'INodeSection/' + str(start) + '.json')
-                        print(option + " was deleted successfully.")
-                    else:
-                        print(option + " is not empty and was not deleted.")
-            else:
-                print("Path must include / but cannot be only root directory .")
-                print(system_message)
         else:
+            print("Path must include / but cannot be only root directory .")
             print(system_message)
     else:
         print(system_message)
