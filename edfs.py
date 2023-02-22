@@ -34,7 +34,7 @@ system_message = "Something is missing or incorrect. The syntax for this command
                  "\r\n\t\t\t-rm <path-to-file> \r\n\t\t\t-rmdir <path>"
 success_message = " was created successfully."
 error_message = " Error creating "
-
+report = ""
 
 def getNextInode():
     results = requests.get(firebase_url + 'INodeSection/.json?orderBy="$key"&limitToLast=1')
@@ -69,6 +69,39 @@ def doesItExist(start, path, object_type):
     else:
         return False, 9
 
+def getChildren(start, level):
+    global report
+    results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
+    #print("results ", results.text, start)
+    if results.text != "{\"" + str(start) + "\"" + ":\"parent\"}":
+        json_data = json.loads(results.text)
+        keys = list(json_data.keys())
+
+        #print(keys)
+        for key in keys:
+            results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
+            temp = json.loads(results.text)
+            name = temp['name']
+            nodeType = temp['type']
+            #print("start", start, "key ", key, "type", nodeType)
+            if key != start:
+                if nodeType == "root":
+                    report += "<root>\r\n"
+                    #print("<root>")
+                if nodeType == "file":
+                    report += "\t" * level + "<" + name + "/>\r\n"
+                    #print("\t" * level + "<" + name + "/>")
+                if nodeType == "directory":
+                    report += "\t" * level + "<" + name + ">\r\n"
+                    #print("\t" * level + "<" + name + ">")
+                    #recursive call for iterating subdirectories
+                    getChildren(key, level + 1)
+                if nodeType == "directory":
+                    report += "\t" * level + "</" + name + ">\r\n"
+                    #print("\t" * level + "</" + name + ">")
+
+    return report
+
 def create(option, options, start, success, x):
     while x < len(options) - 1:
         path = options[x]
@@ -102,8 +135,14 @@ def create(option, options, start, success, x):
     else:
         print("Error. Invalid path")
 
-def export():
-    test=1
+def export(option, start):
+    global report
+    report = getChildren(start, 1)
+    report += "</root>"
+    print(report)
+    file = open(option, 'w+', newline='')
+    file.write(report)
+    file.close
 
 def ls(option, options, start, success, x):
     if option[0] == "/" and len(option) > 1:
@@ -254,7 +293,7 @@ def main():
         command = sys.argv[1]
         option = sys.argv[2]
         start = 7000  # always start at root
-        if option[0] == "/" and len(option) > 1:
+        if (option[0] == "/" and len(option) > 1) or command == "-export":
             options = option.split("/")
             options[0] = "/"  # set root
 
@@ -264,7 +303,8 @@ def main():
 
             # -EXPORT
             elif command == "-export":
-                export(option, options, start, True, 0)
+                global report
+                export(option, 7000)
 
             # -LS
             elif command == "-ls":
