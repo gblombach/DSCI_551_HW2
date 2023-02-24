@@ -19,8 +19,20 @@
             python edfs.py -rm <path-to-file>
             python edfs.py -rmdir <path>
 
+    Firebase:   firebase URL: https://blombach-dsci-551-hw2-default-rtdb.firebaseio.com/
+
+                Structure for empty root:
+                INodeSection
+                    7000
+                        name: "/"
+                        type: root
+                INodeDirectorySection
+                    7000
+                        7000:parent
+
     Notes:  Permitted python libraries are - base64, json, requests, sys, uuid, fileinput
-            firebase URL: https://blombach-dsci-551-hw2-default-rtdb.firebaseio.com/
+
+
 
 ###############################
 """
@@ -71,23 +83,22 @@ def doesItExist(start, path, object_type):
 
 def getChildren(start, level):
     global report
+
     results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
-    #print("results ", results.text, start)
     if results.text != "{\"" + str(start) + "\"" + ":\"parent\"}":
         json_data = json.loads(results.text)
         keys = list(json_data.keys())
 
         #print(keys)
         for key in keys:
+            #print(key)
             results = requests.get(firebase_url + 'INodeSection/' + key + '/.json')
             temp = json.loads(results.text)
+            #print(temp)
             name = temp['name']
             nodeType = temp['type']
             #print("start", start, "key ", key, "type", nodeType)
             if key != start:
-                if nodeType == "root":
-                    report += "<root>\r\n"
-                    #print("<root>")
                 if nodeType == "file":
                     report += "\t" * level + "<" + name + "/>\r\n"
                     #print("\t" * level + "<" + name + "/>")
@@ -101,6 +112,7 @@ def getChildren(start, level):
                     #print("\t" * level + "</" + name + ">")
 
     return report
+
 
 def create(option, options, start, success, x):
     while x < len(options) - 1:
@@ -137,6 +149,7 @@ def create(option, options, start, success, x):
 
 def export(option, start):
     global report
+    report += "<root>\r\n"
     report = getChildren(start, 1)
     report += "</root>"
     print(report)
@@ -144,13 +157,9 @@ def export(option, start):
     file.write(report)
     file.close
 
-def ls(option, options, start, success, x):
+
+def ls(option, options, start, success):
     if option[0] == "/" and len(option) > 1:
-        options = option.split("/")
-        options[0] = "/"  # set root
-        start = 7000  # always start at root
-        success = False
-        #x=0
         for path in options:
             if path != "/":
                 check, child = doesItExist(start, path, "directory")
@@ -201,7 +210,7 @@ def ls(option, options, start, success, x):
         print(system_message)
 
 
-def mkdir(option, options, start, success, x):
+def mkdir(option, options, start, success):
     for path in options:
         if path != "/":
             check, nextStart = doesItExist(start, path, "directory")
@@ -259,7 +268,7 @@ def rm(option, options, start, success, x):
         print("Error. Invalid path")
 
 
-def rmdir(option, options, start, success, x):
+def rmdir(option, options, start, success):
     for path in options:
         if path != "/":
             check, child = doesItExist(start, path, "directory")
@@ -271,6 +280,7 @@ def rmdir(option, options, start, success, x):
             else:
                 success = False
                 break  # quit processing because path is invalid
+
     if success:
         # check if directory is empty
         results = requests.get(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
@@ -281,9 +291,11 @@ def rmdir(option, options, start, success, x):
             requests.delete(firebase_url + 'INodeDirectorySection/' + str(start) + '.json')
 
             requests.delete(firebase_url + 'INodeSection/' + str(start) + '.json')
-            print(option + " was deleted successfully.")
+            print("The directory " + option + " was deleted successfully.")
         else:
-            print(option + " is not empty and was not deleted.")
+            print("The directory " + option + " is not empty and was not deleted.")
+    elif option[0] == "/" and len(option) == 1:
+        print("You cannot remove the root / directory .")
     else:
         print("The path " + option + " does not exist.")
 
@@ -293,7 +305,7 @@ def main():
         command = sys.argv[1]
         option = sys.argv[2]
         start = 7000  # always start at root
-        if (option[0] == "/" and len(option) > 1) or command == "-export":
+        if (option[0] == "/" and len(option) >= 1) or command == "-export":
             options = option.split("/")
             options[0] = "/"  # set root
 
@@ -304,23 +316,23 @@ def main():
             # -EXPORT
             elif command == "-export":
                 global report
-                export(option, 7000)
+                export(option, start)
 
             # -LS
             elif command == "-ls":
-                ls(option, options, start, False, 0)
+                ls(option, options, start, False)
 
             # -MKDIR
             elif command == "-mkdir":
-                mkdir(option, options, 7000, False, 0 )
+                mkdir(option, options, start, False)
 
             # -RM
             elif command == "-rm":
-                rm(option, options, 7000, True, 0)
+                rm(option, options, start, True, 0)
 
             # -RMDIR
             elif command == "-rmdir":
-                rmdir(option, options, 7000, False, 0)
+                rmdir(option, options, start, False)
 
             else:
                 print(system_message)
